@@ -1,0 +1,5 @@
+socks5
+.idea
+.vscode
+*.o
+bin
