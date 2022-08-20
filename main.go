@@ -25,7 +25,7 @@ var (
 func init() {
 	log.SetFlags(log.Lshortfile | log.LstdFlags)
 	flag.UintVar(&port, "port", 10086, "socks server listen port. ")
-	flag.BoolVar(&IPv6, "ipver", false, "enable ipv6. ")
+	flag.BoolVar(&IPv6, "ipv6", false, "enable ipv6. ")
 	flag.BoolVar(&verbos, "verbos", false, "verbose log. ")
 	flag.Int64Var(&heap, "memSize", nolimit, "memory size limit. ")
 	flag.Parse()
