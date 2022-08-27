@@ -1,22 +1,30 @@
 # usage 
 
 ```shell
-(dev ±) socks5 ツ ./bin/gosocks-darwin-amd64-v3 --help
+socks5 ツ ./bin/gosocks-darwin-amd64-v3 --help
 Usage of ./bin/gosocks-darwin-amd64-v3:
-  -ipv6
-    	enable ipv6.
-  -memSize int
-    	memory size limit.
+  -heap int
+    	set memory size limit.  (default 9223372036854775807)
+  -iface string
+    	set specified interface to use.
+  -network string
+    	set network tcp or udp. (default "tcp")
+  -nodelay
+    	enable tcpnodelay.  (default true)
   -port uint
-    	socks server listen port.  (default 10086)
+    	set socks server listen port.  (default 10086)
+  -reuseaddr
+    	enable reuseaddr.  (default true)
+  -timeout duration
+    	set session timeout.  (default 1s)
   -verbos
-    	verbose log.
+    	enable verbose log.
 ```
 
 # support
 
 - [x] ipv4 
-- [x] ipv6
+- [ ] ipv6
 - [x] tcp 
 - [ ] udp 
 - [ ] auth 
