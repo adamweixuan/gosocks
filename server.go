@@ -1,9 +1,7 @@
 package main
 
 import (
-	"errors"
 	"fmt"
-	"log"
 	"net"
 )
 
@@ -20,36 +18,43 @@ func Start(exitChan chan error, opts ...Opt) {
 }
 
 func run(opt *Options) error {
-	network := "tcp"
-	if opt.ipVer == V6 {
-		network = "tcp6"
-	}
+	InitLocalIPByInterName(opt.iface)
+	localIP, netIface := GetNetInterfaceByName(opt.iface)
+
 	addr := fmt.Sprintf(":%d", opt.port)
-	ln, err := net.Listen(network, addr)
+	if localIP != nil {
+		addr = fmt.Sprintf("%s:%d", localIP.String(), opt.port)
+	}
+	ln, err := net.Listen(opt.network.String(), addr)
 	if err != nil {
 		return err
 	}
 	if ln == nil {
-		return errors.New("listen fail")
+		return ErrNilListener
 	}
 
-	sessionID := uint64(0)
-
-	log.Printf("server start at: %s", ln.Addr().String())
+	log.Info("iface name: %v, out ip: %v. server start at: %s ", netIface, localIP.String(), ln.Addr().String())
 	for {
 		stream, err := ln.Accept()
 		if err != nil {
-			log.Printf("Accept with error:%s", err.Error())
+			log.Error("Accept with error:%s", err.Error())
 			continue
 		}
-		sessionID++
+
 		go func() {
+			ctx := NewCtxWithTraceID()
 			session := &Session{
-				verbos: opt.verbos,
-				local:  stream,
-				id:     sessionID,
+				verbos:    opt.verbos,
+				local:     stream,
+				remote:    nil,
+				ip:        localIP,
+				iface:     netIface,
+				ntype:     opt.network,
+				timeout:   opt.timeout,
+				noDelay:   opt.tcpNodelay,
+				reuseAddr: opt.reuseAddr,
 			}
-			session.Start()
+			session.Start(ctx)
 		}()
 	}
 }

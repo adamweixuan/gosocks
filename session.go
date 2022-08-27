@@ -1,26 +1,12 @@
 package main
 
 import (
+	"context"
 	"encoding/binary"
-	"errors"
 	"io"
-	"log"
 	"net"
 	"strconv"
-)
-
-var (
-	ErrUnSupportVersion  = errors.New("unsupport socks version")
-	ErrUnsupportAddrType = errors.New("unsupport address type")
-)
-
-type Addrtype uint8
-
-const (
-	_      Addrtype = iota
-	ipv4            = 1
-	domain          = 3
-	ipv6            = 4
+	"time"
 )
 
 const (
@@ -29,8 +15,9 @@ const (
 )
 
 const (
-	maxBufSize = 4096
-	minBufSize = 256
+	maxBufSize     = 4096
+	minBufSize     = 256
+	defaultBufSize = 32 * 1024
 )
 
 var (
@@ -54,52 +41,63 @@ var (
 )
 
 type Session struct {
-	verbos bool
-	local  net.Conn
-	remote net.Conn
-	id     uint64
+	verbos    bool
+	local     net.Conn
+	remote    net.Conn
+	ip        net.IP
+	iface     *net.Interface
+	ntype     Network
+	timeout   time.Duration
+	noDelay   bool
+	reuseAddr bool
 }
 
-func (session *Session) Start() {
+func (session *Session) Start(ctx context.Context) {
 	if err := session.auth(); err != nil {
-		log.Printf("session auth error: %s", err.Error())
-		_ = session.local.Close()
+		log.CtxError(ctx, "session auth error: %s", err.Error())
+		session.closeConn(ctx, session.local)
 		return
 	}
 
 	if session.verbos {
-		log.Printf("auth %s success", session.local.LocalAddr().String())
+		log.CtxTrace(ctx, "auth %s success", session.local.LocalAddr().String())
 	}
 
-	if err := session.connect(); err != nil {
-		log.Printf("session connect error: %s", err.Error())
-		_ = session.local.Close()
+	if err := session.connect(ctx); err != nil {
+		log.CtxError(ctx, "session connect error: %s", err.Error())
+		session.closeConn(ctx, session.local)
 		return
 	}
 	if session.verbos {
-		log.Printf("conect to %s success", session.remote.RemoteAddr().String())
+		log.CtxTrace(ctx, "connect to %s success", session.remote.RemoteAddr().String())
 	}
-	session.relay()
+	session.relay(ctx)
 }
 
 func (session *Session) auth() error {
-	buf := make([]byte, minBufSize)
+	buf := Get(minBufSize, minBufSize)
+	defer func() {
+		Put(buf)
+	}()
 	if _, err := io.ReadAtLeast(session.local, buf[:2], 2); err != nil {
 		return err
 	}
-	ver, methodCnt := int(buf[0]), int(buf[1])
+	ver, mCnt := int(buf[0]), int(buf[1])
 	if ver != socksVersion {
 		return ErrUnSupportVersion
 	}
-	if _, err := io.ReadAtLeast(session.local, buf[:methodCnt], methodCnt); err != nil {
+	if _, err := io.ReadAtLeast(session.local, buf[:mCnt], mCnt); err != nil {
 		return err
 	}
 	_, err := session.local.Write(authReply)
 	return err
 }
 
-func (session *Session) connect() error {
-	buf := make([]byte, maxBufSize)
+func (session *Session) connect(ctx context.Context) error {
+	buf := Get(maxBufSize, maxBufSize)
+	defer func() {
+		Put(buf)
+	}()
 
 	if _, err := io.ReadAtLeast(session.local, buf[:4], 4); err != nil {
 		return err
@@ -144,40 +142,90 @@ func (session *Session) connect() error {
 	port := binary.BigEndian.Uint16(buf[:2])
 
 	endPoint := net.JoinHostPort(addr, strconv.Itoa(int(port)))
-	dst, err := net.Dial("tcp", endPoint)
+	dst, err := session.dial(endPoint)
 	if err != nil {
-		_ = dst.Close()
+		session.closeConn(ctx, dst)
 		return err
 	}
 	if _, err := session.local.Write(successReply); err != nil {
-		_ = dst.Close()
+		session.closeConn(ctx, dst)
 		return err
-	}
-	if session.verbos {
-		log.Printf("connect to %s success", endPoint)
 	}
 	session.remote = dst
 	return nil
 }
 
-func (session *Session) relay() {
-	go func() {
-		if cnt, err := io.Copy(session.local, session.remote); err != nil {
-			log.Printf("session_id:%d, relay error: %s", session.id, err.Error())
-		} else if session.verbos {
-			log.Printf("session_id:%d:%s<<<--%s.size:%d",
-				session.id, session.remote.RemoteAddr().String(),
-				session.local.LocalAddr().String(), cnt)
+func (session *Session) relay(ctx context.Context) {
+	forward := func(from, to net.Conn) {
+		buf := Get(defaultBufSize, defaultBufSize)
+		defer Put(buf)
+		//cnt, err := io.Copy(from, to)
+		cnt, err := io.CopyBuffer(from, to, buf)
+		if err != nil {
+			log.CtxError(ctx, "[%s->%s] forward error: %s", from.RemoteAddr(), to.RemoteAddr(), err.Error())
 		}
-	}()
+		if session.verbos {
+			log.CtxTrace(ctx, "[%s->%s] forward success. copy size:%d ", from.RemoteAddr(), to.RemoteAddr(), cnt)
+		}
 
-	go func() {
-		if cnt, err := io.Copy(session.remote, session.local); err != nil {
-			log.Printf("session_id:%d, relay error: %s", session.id, err.Error())
-		} else if session.verbos {
-			log.Printf("session_id:%d:%s--->>>%s.size:%d",
-				session.id, session.local.LocalAddr().String(),
-				session.remote.RemoteAddr().String(), cnt)
+	}
+	go forward(session.local, session.remote)
+	go forward(session.remote, session.local)
+}
+
+func (session *Session) dial(addr string) (net.Conn, error) {
+	var la net.Addr
+	switch session.ntype {
+	case tcp:
+		la = &net.TCPAddr{
+			IP: session.ip,
 		}
-	}()
+	case udp:
+		la = &net.UDPAddr{
+			IP: session.ip,
+		}
+	default:
+		return nil, ErrUnsupportNetType
+	}
+
+	dialer := &net.Dialer{LocalAddr: la, Timeout: session.timeout}
+
+	var ctrlOps []CtrlOp
+
+	if session.iface != nil {
+		ctrlOps = append(ctrlOps, Bind(session.iface))
+	}
+
+	if session.noDelay {
+		ctrlOps = append(ctrlOps, NoDelay())
+	}
+
+	if session.reuseAddr {
+		ctrlOps = append(ctrlOps, ReuseAddr())
+	}
+	dialer.Control = Control(ctrlOps...)
+
+	conn, err := dialer.Dial(session.ntype.String(), addr)
+
+	if conn == nil || err != nil {
+		return nil, err
+	}
+
+	if c, ok := conn.(*net.TCPConn); ok {
+		_ = c.SetKeepAlive(true)
+	}
+
+	return conn, err
+}
+
+func (session *Session) closeConn(ctx context.Context, conn net.Conn) {
+	if conn == nil {
+		return
+	}
+	if session.verbos {
+		log.CtxWarn(ctx, "closeConn %s", conn.LocalAddr().String())
+	}
+	if err := conn.Close(); err != nil {
+		log.CtxError(ctx, "closeConn fail %s:%s", conn.LocalAddr().String(), err.Error())
+	}
 }

@@ -1,26 +1,30 @@
 package main
 
-type IPVersion uint8
-
-const (
-	V4 IPVersion = iota
-	V6
+import (
+	"time"
 )
 
 type (
 	Options struct {
-		port   uint16
-		ipVer  IPVersion
-		verbos bool
+		port       uint16
+		verbos     bool
+		iface      string
+		network    Network
+		timeout    time.Duration
+		tcpNodelay bool
+		reuseAddr  bool
 	}
 	Opt func(*Options)
 )
 
 func DefaultOpt() *Options {
 	return &Options{
-		port:   10086,
-		ipVer:  V4,
-		verbos: false,
+		port:       10086,
+		verbos:     false,
+		iface:      "",
+		network:    tcp,
+		timeout:    time.Second,
+		tcpNodelay: false,
 	}
 }
 
@@ -36,8 +40,32 @@ func EnableVerbos() Opt {
 	}
 }
 
-func EnableIpv6() Opt {
+func EnableReuseAddr() Opt {
 	return func(options *Options) {
-		options.ipVer = V6
+		options.reuseAddr = true
+	}
+}
+
+func WithTimeout(timeout time.Duration) Opt {
+	return func(options *Options) {
+		options.timeout = timeout
+	}
+}
+
+func EnableNoDelay() Opt {
+	return func(options *Options) {
+		options.tcpNodelay = true
+	}
+}
+
+func WithNetwork(nw string) Opt {
+	return func(options *Options) {
+		options.network = NetworkFromStr(nw)
+	}
+}
+
+func WithIface(iface string) Opt {
+	return func(options *Options) {
+		options.iface = iface
 	}
 }
