@@ -33,6 +33,10 @@ func run(opt *Options) error {
 		return ErrNilListener
 	}
 
+	defer func() {
+		_ = ln.Close()
+	}()
+
 	log.Info("iface name: %v, out ip: %v. server start at: %s ", netIface, localIP.String(), ln.Addr().String())
 	for {
 		stream, err := ln.Accept()

@@ -9,4 +9,5 @@ var (
 	ErrUnsupportAddrType = errors.New("unsupport address type")
 	ErrUnsupportNetType  = errors.New("unsupport net type")
 	ErrNilListener       = errors.New("listener is nil")
+	ErrUnsupportCmd      = errors.New("unsupport command type")
 )

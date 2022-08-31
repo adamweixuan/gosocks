@@ -9,34 +9,15 @@ import (
 	"time"
 )
 
-const (
-	socksVersion = 0x05
-	connectCmd   = 0x01
-)
-
-const (
-	maxBufSize     = 4096
-	minBufSize     = 256
-	defaultBufSize = 32 * 1024
-)
-
 var (
-	successReply = []byte{
-		0x05,
-		0x00,
-		0x00,
-		0x01,
-		0x00,
-		0x00,
-		0x00,
-		0x00,
-		0x00,
-		0x00,
+	authReply = []byte{
+		socksVersion,
+		noAuthRequired,
 	}
 
-	authReply = []byte{
-		0x05,
-		0x00,
+	authFailReply = []byte{
+		socksVersion,
+		noAcceptableAuth,
 	}
 )
 
@@ -55,6 +36,7 @@ type Session struct {
 func (session *Session) Start(ctx context.Context) {
 	if err := session.auth(); err != nil {
 		log.CtxError(ctx, "session auth error: %s", err.Error())
+		_, _ = session.local.Write(authFailReply)
 		session.closeConn(ctx, session.local)
 		return
 	}
@@ -63,103 +45,108 @@ func (session *Session) Start(ctx context.Context) {
 		log.CtxTrace(ctx, "auth %s success", session.local.LocalAddr().String())
 	}
 
-	if err := session.connect(ctx); err != nil {
-		log.CtxError(ctx, "session connect error: %s", err.Error())
-		session.closeConn(ctx, session.local)
+	msg := session.connect(ctx)
+
+	_, _ = session.local.Write(NewReply(msg.Code()))
+
+	if msg.Code() != success {
+		log.CtxError(ctx, "connect fail:%s", msg.Err())
 		return
 	}
+
 	if session.verbos {
-		log.CtxTrace(ctx, "connect to %s success", session.remote.RemoteAddr().String())
+		log.CtxTrace(ctx, "connectCmd to %s success", session.remote.RemoteAddr().String())
 	}
 	session.relay(ctx)
 }
 
 func (session *Session) auth() error {
-	buf := Get(minBufSize, minBufSize)
-	defer func() {
-		Put(buf)
-	}()
-	if _, err := io.ReadAtLeast(session.local, buf[:2], 2); err != nil {
+	var buf [2]byte
+
+	if _, err := io.ReadFull(session.local, buf[:]); err != nil {
 		return err
 	}
-	ver, mCnt := int(buf[0]), int(buf[1])
+	ver, count := int(buf[0]), int(buf[1])
 	if ver != socksVersion {
 		return ErrUnSupportVersion
 	}
-	if _, err := io.ReadAtLeast(session.local, buf[:mCnt], mCnt); err != nil {
+
+	methods := make([]byte, count)
+
+	if _, err := io.ReadFull(session.local, methods); err != nil {
 		return err
 	}
+
+	// todo auth
 	_, err := session.local.Write(authReply)
 	return err
 }
 
-func (session *Session) connect(ctx context.Context) error {
-	buf := Get(maxBufSize, maxBufSize)
-	defer func() {
-		Put(buf)
-	}()
-
-	if _, err := io.ReadAtLeast(session.local, buf[:4], 4); err != nil {
-		return err
+func (session *Session) connect(_ context.Context) *Message {
+	var buf [4]byte
+	if _, err := io.ReadFull(session.local, buf[:]); err != nil {
+		return NewMessage(readConnErr, err)
 	}
 
-	ver, cmd, atyp := buf[0], buf[1], buf[3]
+	cmd, atyp := cmdType(buf[1]), addrtype(buf[3])
 
-	if ver != socksVersion || cmd != connectCmd {
-		return ErrUnSupportVersion
+	if cmd == bindCmd || cmd == udpAssociateCmd {
+		return NewMessage(cmdNotSupported, ErrUnsupportCmd)
 	}
 
-	addr := ""
+	var addr string
+
 	switch atyp {
 	case ipv4:
-		if _, err := io.ReadAtLeast(session.local, buf[:net.IPv4len], net.IPv4len); err != nil {
-			return err
+		var ip [4]byte
+		if _, err := io.ReadFull(session.local, ip[:]); err != nil {
+			return NewMessage(readConnErr, err)
 		}
-		addr = net.IP(buf[:net.IPv4len]).String()
+		addr = net.IP(ip[:]).String()
 	case domain:
-		if _, err := io.ReadAtLeast(session.local, buf[:1], 1); err != nil {
-			return err
+		var cnt [1]byte
+		if _, err := io.ReadFull(session.local, cnt[:]); err != nil {
+			return NewMessage(readConnErr, err)
 		}
-		addrlen := int(buf[0])
 
-		if _, err := io.ReadAtLeast(session.local, buf[:addrlen], addrlen); err != nil {
-			return err
+		domainSize := int(cnt[0])
+		buf := make([]byte, domainSize)
+
+		if _, err := io.ReadFull(session.local, buf[:]); err != nil {
+			return NewMessage(readConnErr, err)
 		}
-		addr = string(buf[:addrlen])
+		addr = string(buf)
 	case ipv6:
-		if _, err := io.ReadAtLeast(session.local, buf[:net.IPv6len], net.IPv6len); err != nil {
-			return err
+		var ip [16]byte
+		if _, err := io.ReadFull(session.local, ip[:]); err != nil {
+			return NewMessage(readConnErr, err)
 		}
-		addr = net.IP(buf[:net.IPv6len]).String()
+		addr = net.IP(ip[:]).String()
 	default:
-		return ErrUnsupportAddrType
+		return NewMessage(addrNotSupported, ErrUnsupportAddrType)
 	}
 
-	if _, err := io.ReadAtLeast(session.local, buf[:2], 2); err != nil {
-		return err
+	var portBuf [2]byte
+
+	if _, err := io.ReadFull(session.local, portBuf[:]); err != nil {
+		return NewMessage(readConnErr, err)
 	}
 
-	port := binary.BigEndian.Uint16(buf[:2])
+	port := binary.BigEndian.Uint16(portBuf[:])
 
 	endPoint := net.JoinHostPort(addr, strconv.Itoa(int(port)))
 	dst, err := session.dial(endPoint)
 	if err != nil {
-		session.closeConn(ctx, dst)
-		return err
-	}
-	if _, err := session.local.Write(successReply); err != nil {
-		session.closeConn(ctx, dst)
-		return err
+		return NewMessage(readConnErr, err)
 	}
 	session.remote = dst
-	return nil
+	return NewMessage(success, nil)
 }
 
 func (session *Session) relay(ctx context.Context) {
 	forward := func(from, to net.Conn) {
 		buf := Get(defaultBufSize, defaultBufSize)
 		defer Put(buf)
-		//cnt, err := io.Copy(from, to)
 		cnt, err := io.CopyBuffer(from, to, buf)
 		if err != nil {
 			log.CtxError(ctx, "[%s->%s] forward error: %s", from.RemoteAddr(), to.RemoteAddr(), err.Error())
