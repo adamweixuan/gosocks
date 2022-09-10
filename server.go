@@ -18,7 +18,7 @@ func Start(exitChan chan error, opts ...Opt) {
 }
 
 func run(opt *Options) error {
-	InitLocalIPByInterName(opt.iface)
+	initLocalIPByInterName(opt.iface)
 	localIP, netIface := GetNetInterfaceByName(opt.iface)
 
 	addr := fmt.Sprintf(":%d", opt.port)

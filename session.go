@@ -15,7 +15,7 @@ var (
 		noAuthRequired,
 	}
 
-	authFailReply = []byte{
+	authFailReply = []byte{ //nolint:gochecknoglobals
 		socksVersion,
 		noAcceptableAuth,
 	}
@@ -23,14 +23,14 @@ var (
 
 type Session struct {
 	verbos    bool
+	noDelay   bool
+	reuseAddr bool
+	ntype     Network
 	local     net.Conn
 	remote    net.Conn
 	ip        net.IP
 	iface     *net.Interface
-	ntype     Network
 	timeout   time.Duration
-	noDelay   bool
-	reuseAddr bool
 }
 
 func (session *Session) Start(ctx context.Context) {
@@ -88,7 +88,7 @@ func (session *Session) connect(_ context.Context) *Message {
 		return NewMessage(readConnErr, err)
 	}
 
-	cmd, atyp := cmdType(buf[1]), addrtype(buf[3])
+	cmd, atyp := cmdType(buf[1]), Addrtype(buf[3])
 
 	if cmd == bindCmd || cmd == udpAssociateCmd {
 		return NewMessage(cmdNotSupported, ErrUnsupportCmd)
@@ -102,6 +102,7 @@ func (session *Session) connect(_ context.Context) *Message {
 		if _, err := io.ReadFull(session.local, ip[:]); err != nil {
 			return NewMessage(readConnErr, err)
 		}
+
 		addr = net.IP(ip[:]).String()
 	case domain:
 		var cnt [1]byte
@@ -112,15 +113,17 @@ func (session *Session) connect(_ context.Context) *Message {
 		domainSize := int(cnt[0])
 		buf := make([]byte, domainSize)
 
-		if _, err := io.ReadFull(session.local, buf[:]); err != nil {
+		if _, err := io.ReadFull(session.local, buf); err != nil {
 			return NewMessage(readConnErr, err)
 		}
-		addr = string(buf)
+
+		addr = bytes2Str(buf)
 	case ipv6:
 		var ip [16]byte
 		if _, err := io.ReadFull(session.local, ip[:]); err != nil {
 			return NewMessage(readConnErr, err)
 		}
+
 		addr = net.IP(ip[:]).String()
 	default:
 		return NewMessage(addrNotSupported, ErrUnsupportAddrType)

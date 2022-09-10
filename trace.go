@@ -35,5 +35,5 @@ func genTraceID() string {
 }
 
 func NewCtxWithTraceID() context.Context {
-	return context.WithValue(context.Background(), KeyTraceID, genTraceID()) //nolint:staticcheck
+	return context.WithValue(context.Background(), "KeyTraceID", genTraceID()) //nolint:staticcheck
 }

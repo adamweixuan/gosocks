@@ -4,6 +4,8 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"net"
+	"reflect"
+	"unsafe"
 )
 
 var (
@@ -12,7 +14,6 @@ var (
 )
 
 func GetNetInterfaceByName(iface string) (net.IP, *net.Interface) {
-
 	if len(iface) == 0 {
 		return nil, nil
 	}
@@ -45,7 +46,7 @@ func GetNetInterfaceByName(iface string) (net.IP, *net.Interface) {
 	return outIP, ief
 }
 
-func InitLocalIPByInterName(iface string) {
+func initLocalIPByInterName(iface string) {
 	if len(iface) > 0 {
 		localIP, _ = GetNetInterfaceByName(iface)
 		log.Info("init local ip:%s", localIP.String())
@@ -75,6 +76,7 @@ func InitLocalIPByInterName(iface string) {
 				continue
 			}
 			localIP = ipnet.IP
+
 			break
 		}
 	}
@@ -87,6 +89,7 @@ func ip2byte(ip net.IP) []byte {
 	}
 	dst := make([]byte, 32)
 	hex.Encode(dst, ip.To16())
+
 	return dst
 }
 
@@ -101,4 +104,23 @@ func int2ip(nn uint32) net.IP {
 	ip := make(net.IP, 4)
 	binary.BigEndian.PutUint32(ip, nn)
 	return ip
+}
+
+func str2Bytes(str string) []byte {
+	x := (*reflect.StringHeader)(unsafe.Pointer(&str))
+	h := reflect.SliceHeader{
+		Data: x.Data,
+		Len:  x.Len,
+		Cap:  x.Len,
+	}
+	return *(*[]byte)(unsafe.Pointer(&h)) //nolint:govet
+}
+
+func bytes2Str(buf []byte) string {
+	x := (*reflect.SliceHeader)(unsafe.Pointer(&buf))
+	h := reflect.StringHeader{
+		Data: x.Data,
+		Len:  x.Len,
+	}
+	return *(*string)(unsafe.Pointer(&h)) //nolint:govet
 }

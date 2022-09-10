@@ -1,11 +1,16 @@
 package main
 
 const (
-	socksVersion = 0x05
+	socksVersion   = 0x05
+	defaultBufSize = 32 * 1024
+	defaultPort    = 10086
 )
 
 const (
-	defaultBufSize = 32 * 1024
+	tcpStr  = "tcp"
+	tcp6Str = "tcp6"
+	udpStr  = "udp"
+	udp6Str = "udp6"
 )
 
 type Network uint8
@@ -19,29 +24,29 @@ const (
 func (nt Network) String() string {
 	switch nt {
 	case tcp:
-		return "tcp"
+		return tcpStr
 	case udp:
-		return "udp"
+		return udpStr
 	default:
-		return "tcp"
+		return tcpStr
 	}
 }
 
 func NetworkFromStr(str string) Network {
 	switch str {
-	case "tcp", "tcp6":
+	case tcpStr, tcp6Str:
 		return tcp
-	case "udp", "udp6":
+	case udpStr, udp6Str:
 		return udp
 	default:
 		return tcp
 	}
 }
 
-type addrtype uint8
+type Addrtype uint8
 
 const (
-	_      addrtype = iota
+	_      Addrtype = iota
 	ipv4            = 1
 	domain          = 3
 	ipv6            = 4
@@ -63,35 +68,34 @@ const (
 	udpAssociateCmd cmdType = 3
 )
 
-type statusCode uint8
+type StatusCode uint8
 
 const (
-	_                             = iota
-	success            statusCode = 0x00
-	readConnErr        statusCode = 0x01
-	connNotAllowed     statusCode = 0x02
-	networkUnreachable statusCode = 0x03
-	hostUnreachable    statusCode = 0x04
-	connRefused        statusCode = 0x05
-	ttlExpired         statusCode = 0x06
-	cmdNotSupported    statusCode = 0x07
-	addrNotSupported   statusCode = 0x08
+	success StatusCode = iota
+	readConnErr
+	connNotAllowed
+	networkUnreachable
+	hostUnreachable
+	connRefused
+	ttlExpired
+	cmdNotSupported
+	addrNotSupported
 )
 
 type Message struct {
-	code statusCode
+	code StatusCode
 	err  error
 }
 
-func NewMessage(code statusCode, err error) *Message {
+func NewMessage(code StatusCode, err error) *Message {
 	return &Message{code: code, err: err}
 }
 
-func (m *Message) Code() statusCode {
+func (m *Message) Code() StatusCode {
 	return m.code
 }
 
-func (m *Message) SetCode(code statusCode) {
+func (m *Message) SetCode(code StatusCode) {
 	m.code = code
 }
 
@@ -103,7 +107,7 @@ func (m *Message) SetErr(err error) {
 	m.err = err
 }
 
-func NewReply(sc statusCode) []byte {
+func NewReply(sc StatusCode) []byte {
 	return []byte{
 		socksVersion,
 		byte(sc),

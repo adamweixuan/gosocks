@@ -6,20 +6,20 @@ import (
 
 type (
 	Options struct {
-		port       uint16
-		verbos     bool
-		iface      string
-		network    Network
-		timeout    time.Duration
 		tcpNodelay bool
 		reuseAddr  bool
+		verbos     bool
+		network    Network
+		port       uint16
+		timeout    time.Duration
+		iface      string
 	}
 	Opt func(*Options)
 )
 
 func DefaultOpt() *Options {
 	return &Options{
-		port:       10086,
+		port:       defaultPort,
 		verbos:     false,
 		iface:      "",
 		network:    tcp,

@@ -24,7 +24,7 @@ var (
 )
 
 func init() {
-	flag.UintVar(&port, "port", 10086, "set socks server listen port. ")
+	flag.UintVar(&port, "port", defaultPort, "set socks server listen port. ")
 	flag.BoolVar(&verbos, "verbos", false, "enable verbose log. ")
 	flag.Int64Var(&heap, "heap", math.MaxInt64, "set memory size limit. ")
 	flag.StringVar(&iface, "iface", "", "set specified interface to use. ")
@@ -62,8 +62,8 @@ func parseOpts() []Opt {
 func main() {
 	debug.SetMemoryLimit(heap)
 	log.Info("version: %s. build at: %s.", Version, BuildDate)
-	exitChan := make(chan error)
 
+	exitChan := make(chan error)
 	Start(exitChan, parseOpts()...)
 
 	err := <-exitChan

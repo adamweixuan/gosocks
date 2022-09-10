@@ -21,20 +21,20 @@ type Log interface {
 }
 
 var (
-	blue    = color.New(color.FgBlue).SprintFunc()
-	red     = color.New(color.FgRed).SprintFunc()
-	magenta = color.New(color.FgMagenta).SprintFunc()
-	green   = color.New(color.FgGreen).SprintFunc()
+	blue    = color.New(color.FgBlue).SprintFunc()    //nolint:gochecknoglobals
+	red     = color.New(color.FgRed).SprintFunc()     //nolint:gochecknoglobals
+	magenta = color.New(color.FgMagenta).SprintFunc() //nolint:gochecknoglobals
+	green   = color.New(color.FgGreen).SprintFunc()   //nolint:gochecknoglobals
 
-	logflag     = stdlog.LstdFlags | stdlog.Lmicroseconds
-	infoLogger  = stdlog.New(os.Stderr, blue("INFO "), logflag)
+	logflag     = stdlog.LstdFlags | stdlog.Lmicroseconds       //nolint:gochecknoglobals
+	infoLogger  = stdlog.New(os.Stderr, blue("INFO "), logflag) //nolint:gochecknoglobals
 	warnLogger  = stdlog.New(os.Stderr, magenta("WARN "), logflag)
 	errorLogger = stdlog.New(os.Stderr, red("ERROR "), logflag)
 	traceLogger = stdlog.New(os.Stderr, green("TRACE "), logflag)
 )
 
 var (
-	log Log = &defLogger{} //nolint:typecheck
+	log Log = &defLogger{}
 )
 
 type defLogger struct{}
@@ -56,21 +56,21 @@ func (d *defLogger) Trace(format string, v ...any) {
 }
 
 func (d *defLogger) CtxInfo(ctx context.Context, format string, v ...any) {
-	logId, _ := ctx.Value(KeyTraceID).(string)
-	infoLogger.Printf(logId+" "+format, v...)
+	logID, _ := ctx.Value(KeyTraceID).(string)
+	infoLogger.Printf(logID+" "+format, v...)
 }
 
 func (d *defLogger) CtxWarn(ctx context.Context, format string, v ...any) {
-	logId, _ := ctx.Value(KeyTraceID).(string)
-	warnLogger.Printf(logId+" "+format, v...)
+	logID, _ := ctx.Value(KeyTraceID).(string)
+	warnLogger.Printf(logID+" "+format, v...)
 }
 
 func (d *defLogger) CtxError(ctx context.Context, format string, v ...any) {
-	logId, _ := ctx.Value(KeyTraceID).(string)
-	errorLogger.Printf(logId+" "+format, v...)
+	logID, _ := ctx.Value(KeyTraceID).(string)
+	errorLogger.Printf(logID+" "+format, v...)
 }
 
 func (d *defLogger) CtxTrace(ctx context.Context, format string, v ...any) {
-	logId, _ := ctx.Value(KeyTraceID).(string)
-	traceLogger.Printf(logId+" "+format, v...)
+	logID, _ := ctx.Value(KeyTraceID).(string)
+	traceLogger.Printf(logID+" "+format, v...)
 }
