@@ -46,7 +46,7 @@ func Get(size uint, capacity uint) []byte {
 	if capacity > size {
 		c = capacity
 	}
-	var ret = caches[getIdx(c)].Get().([]byte)
+	ret, _ := caches[getIdx(c)].Get().([]byte)
 	ret = ret[:size]
 	return ret
 }
@@ -57,5 +57,5 @@ func Put(buf []byte) {
 		return
 	}
 	buf = buf[:0]
-	caches[bsr(size)].Put(buf)
+	caches[bsr(size)].Put(buf) //nolint:staticcheck
 }

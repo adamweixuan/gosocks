@@ -15,7 +15,7 @@ func setSocketOptInt(fd int, level int, opt int, value int) {
 	}
 }
 
-func control(opt *CtrlOpt) func(network, address string, c syscall.RawConn) error { //nolint:typecheck
+func control(opt *CtrlOpt) func(network, address string, c syscall.RawConn) error {
 	return func(network, address string, c syscall.RawConn) (err error) {
 		return c.Control(func(fd uintptr) {
 
