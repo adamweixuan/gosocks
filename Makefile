@@ -2,9 +2,13 @@ NAME=gosocks
 BINDIR=bin
 VERSION=$(shell git describe --tags || echo "unknown version")
 BUILDTIME=$(shell date -u)
-GOBUILD=CGO_ENABLED=0 go build -trimpath -ldflags '-X "main.Version=$(VERSION)" \
-		-X "main.BuildDate=$(BUILDTIME)" \
-		-w -s'
+ldflags="\
+-w -s \
+-X 'main.Version=$(VERSION)' \
+-X 'main.BuildDate=$(BUILDTIME)' \
+"
+
+GOBUILD=CGO_ENABLED=0 go build -trimpath -ldflags ${ldflags}
 
 PLATFORM_LIST = \
 	darwin-amd64 \
